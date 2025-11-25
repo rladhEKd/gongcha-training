@@ -1,5 +1,6 @@
 // --- 상태 정의 ---
 const STEPS = {
+  HOME: "HOME",
   CATEGORY: "CATEGORY",
   MENU: "MENU",
   OPTIONS: "OPTIONS",
@@ -8,14 +9,74 @@ const STEPS = {
   DONE: "DONE",
 };
 
-let currentStep = STEPS.CATEGORY;
+let currentStep = STEPS.HOME;
+let currentLevel = null; // 'easy' | 'medium' | 'hard'
 
-// 미션 조건 (이걸 기준으로 미션 성공 여부 판단)
-const missionTarget = {
-  category: "milktea",
-  drink: "taro_milktea",
-  temp: "ice",
+// 난이도별 설정
+const LEVEL_CONFIG = {
+  easy: {
+    key: "easy",
+    label: "초급",
+    title: "미션: 타로 밀크티 아이스를 주문해 보세요",
+    sub: "초급 단계에서는 카테고리 → 메뉴 → ICE/HOT 선택까지만 연습합니다.",
+    missionTarget: {
+      category: "milktea",
+      drink: "taro_milktea",
+      temp: "ice",
+    },
+    options: {
+      temp: true,
+      size: false,
+      sugar: false,
+      ice: false,
+      toppings: false,
+    },
+  },
+  medium: {
+    key: "medium",
+    label: "중급",
+    title: "미션: 블랙 밀크티 핫 점보를 주문해 보세요",
+    sub: "중급 단계에서는 ICE/HOT과 사이즈까지 함께 선택합니다.",
+    missionTarget: {
+      category: "milktea",
+      drink: "black_milktea",
+      temp: "hot",
+      size: "large",
+    },
+    options: {
+      temp: true,
+      size: true,
+      sugar: false,
+      ice: false,
+      toppings: false,
+    },
+  },
+  hard: {
+    key: "hard",
+    label: "고급",
+    title:
+      "미션: 타로 밀크티 아이스(당도 50%, 얼음 적게, 펄 토핑)를 주문해 보세요",
+    sub: "고급 단계에서는 당도·얼음·토핑까지 실제 공차처럼 모두 선택합니다.",
+    missionTarget: {
+      category: "milktea",
+      drink: "taro_milktea",
+      temp: "ice",
+      sugar: "50",
+      iceLevel: "less",
+      toppings: ["pearl"],
+    },
+    options: {
+      temp: true,
+      size: true,
+      sugar: true,
+      ice: true,
+      toppings: true,
+    },
+  },
 };
+
+// 현재 선택된 미션 타깃 (난이도 선택 시 세팅)
+let missionTarget = null;
 
 // 메뉴 / 옵션 데이터
 const categories = [
@@ -99,6 +160,7 @@ const toppingOptions = [
 
 // 현재 주문 정보
 const order = {
+  level: null, // easy/medium/hard
   category: null,
   drinkKey: null,
   drinkName: null,
@@ -115,6 +177,8 @@ const screenEl = document.getElementById("screen");
 const cartTitleEl = document.getElementById("cart-title");
 const cartSubEl = document.getElementById("cart-sub");
 const payBtn = document.getElementById("pay-btn");
+const missionTextEl = document.getElementById("mission-text");
+const missionSubEl = document.getElementById("mission-sub");
 
 // 유틸: 포맷
 const formatPrice = (p) => p.toLocaleString("ko-KR") + "원";
@@ -126,12 +190,75 @@ const getIceLabel = (key) =>
 const getToppingLabel = (key) =>
   toppingOptions.find((t) => t.key === key)?.label || "";
 
+// 난이도 설정 함수
+function setLevel(levelKey) {
+  const cfg = LEVEL_CONFIG[levelKey];
+  if (!cfg) return;
+  currentLevel = levelKey;
+  missionTarget = cfg.missionTarget;
+  order.level = levelKey;
+
+  // 헤더 미션 문구 업데이트
+  missionTextEl.textContent = cfg.title;
+  missionSubEl.textContent = cfg.sub;
+
+  // 주문 기본값 리셋
+  order.category = null;
+  order.drinkKey = null;
+  order.drinkName = null;
+  order.price = 0;
+  order.temp = "ice";
+  order.size = "regular";
+  order.sugar = "50";
+  order.iceLevel = "regular";
+  order.toppings = [];
+  order.quantity = 1;
+
+  currentStep = STEPS.CATEGORY;
+  render();
+}
+
 // --- 렌더 함수 ---
 function render() {
   screenEl.innerHTML = "";
   let html = "";
 
-  if (currentStep === STEPS.CATEGORY) {
+  // 0단계: 난이도 선택 홈 화면
+  if (currentStep === STEPS.HOME) {
+    html += `
+      <div class="screen-title">공차 키오스크 연습 난이도 선택</div>
+      <div class="screen-subtitle">
+        단계별로 연습 범위가 달라집니다. 초급 → 메뉴 + ICE/HOT, 중급 → +사이즈, 고급 → 전체 옵션.
+      </div>
+      <div class="grid">
+        <div class="card" data-role="level" data-key="easy">
+          <div class="card-title">초급 · Easy</div>
+          <div class="card-desc">
+            - 카테고리 선택<br/>
+            - 메뉴 선택<br/>
+            - ICE / HOT 선택
+          </div>
+        </div>
+        <div class="card" data-role="level" data-key="medium">
+          <div class="card-title">중급 · Medium</div>
+          <div class="card-desc">
+            - 메뉴 + ICE/HOT<br/>
+            - 사이즈(레귤러 / 점보) 선택
+          </div>
+        </div>
+        <div class="card" data-role="level" data-key="hard">
+          <div class="card-title">고급 · Hard</div>
+          <div class="card-desc">
+            - 메뉴 + ICE/HOT + 사이즈<br/>
+            - 당도 · 얼음량 · 토핑까지 전체 연습
+          </div>
+        </div>
+      </div>
+      <div class="toast info show">
+        💡 먼저 연습하고 싶은 난이도를 선택해 주세요.
+      </div>
+    `;
+  } else if (currentStep === STEPS.CATEGORY) {
     html += `
       <div class="screen-title">1단계 · 카테고리 선택</div>
       <div class="screen-subtitle">밀크티, 스무디, 커피 중에서 원하는 카테고리를 선택하세요.</div>
@@ -149,8 +276,9 @@ function render() {
           .join("")}
       </div>
       <div class="toast info show">
-        💡 미션: [밀크티] 카테고리를 먼저 선택해 보세요.
+        💡 미션에 맞는 메뉴가 있는 카테고리를 선택해 보세요.
       </div>
+      <button class="secondary-btn" data-role="back-home">← 난이도 다시 선택</button>
     `;
   } else if (currentStep === STEPS.MENU) {
     const list = drinksByCategory[order.category] || [];
@@ -162,7 +290,8 @@ function render() {
       <div class="grid">
         ${list
           .map((d) => {
-            const isMissionDrink = d.key === missionTarget.drink;
+            const isMissionDrink =
+              missionTarget && d.key === missionTarget.drink;
             return `
           <div class="card" data-role="drink" data-key="${d.key}">
             <div class="card-title">
@@ -177,11 +306,13 @@ function render() {
           .join("")}
       </div>
       <div class="toast info show">
-        💡 미션: '타로 밀크티'를 찾아 선택해 보세요.
+        💡 미션에 나온 메뉴를 찾아 선택해 보세요.
       </div>
       <button class="secondary-btn" data-role="back-category">← 카테고리 다시 선택</button>
     `;
   } else if (currentStep === STEPS.OPTIONS) {
+    const cfg = LEVEL_CONFIG[currentLevel];
+    const opt = cfg?.options || {};
     const toppingsLabel =
       order.toppings.length > 0
         ? order.toppings.map(getToppingLabel).join(", ")
@@ -189,94 +320,133 @@ function render() {
 
     html += `
       <div class="screen-title">3단계 · 옵션 선택</div>
-      <div class="screen-subtitle">당도, 얼음량, 토핑, 온도·사이즈를 선택한 후 장바구니에 담아 주세요.</div>
+      <div class="screen-subtitle">난이도에 따라 선택해야 하는 옵션이 다릅니다.</div>
 
       <div class="section-title">선택한 메뉴</div>
       <div class="card">
         <div class="card-title">${order.drinkName}</div>
         <div class="card-price">${formatPrice(order.price)}</div>
       </div>
+    `;
 
-      <div class="section-title">당도</div>
-      <div class="option-row">
-        ${sugarOptions
-          .map(
-            (s) => `
+    // 당도
+    if (opt.sugar) {
+      html += `
+        <div class="section-title">당도</div>
+        <div class="option-row">
+          ${sugarOptions
+            .map(
+              (s) => `
+            <button class="option-btn ${
+              order.sugar === s.key ? "active" : ""
+            }" data-role="sugar" data-key="${s.key}">
+              ${s.label}
+            </button>
+          `
+            )
+            .join("")}
+        </div>
+      `;
+    }
+
+    // 얼음량
+    if (opt.ice) {
+      html += `
+        <div class="section-title">얼음량</div>
+        <div class="option-row">
+          ${iceOptions
+            .map(
+              (i) => `
+            <button class="option-btn ${
+              order.iceLevel === i.key ? "active" : ""
+            }" data-role="iceLevel" data-key="${i.key}">
+              ${i.label}
+            </button>
+          `
+            )
+            .join("")}
+        </div>
+      `;
+    }
+
+    // 토핑
+    if (opt.toppings) {
+      html += `
+        <div class="section-title">토핑 (복수 선택 가능)</div>
+        <div class="option-row">
+          ${toppingOptions
+            .map(
+              (t) => `
+            <button class="option-btn ${
+              order.toppings.includes(t.key) ? "active" : ""
+            }" data-role="topping" data-key="${t.key}">
+              ${t.label}
+            </button>
+          `
+            )
+            .join("")}
+        </div>
+        <div class="screen-subtitle">현재 선택: ${toppingsLabel}</div>
+      `;
+    }
+
+    // 온도 (모든 난이도 공통)
+    if (opt.temp) {
+      html += `
+        <div class="section-title">온도</div>
+        <div class="option-row">
           <button class="option-btn ${
-            order.sugar === s.key ? "active" : ""
-          }" data-role="sugar" data-key="${s.key}">
-            ${s.label}
-          </button>
-        `
-          )
-          .join("")}
-      </div>
-
-      <div class="section-title">얼음량</div>
-      <div class="option-row">
-        ${iceOptions
-          .map(
-            (i) => `
+            order.temp === "ice" ? "active" : ""
+          }" data-role="temp" data-key="ice">아이스 ICE</button>
           <button class="option-btn ${
-            order.iceLevel === i.key ? "active" : ""
-          }" data-role="iceLevel" data-key="${i.key}">
-            ${i.label}
-          </button>
-        `
-          )
-          .join("")}
-      </div>
+            order.temp === "hot" ? "active" : ""
+          }" data-role="temp" data-key="hot">핫 HOT</button>
+        </div>
+      `;
+    }
 
-      <div class="section-title">토핑 (복수 선택 가능)</div>
-      <div class="option-row">
-        ${toppingOptions
-          .map(
-            (t) => `
+    // 사이즈 (중급 이상)
+    if (opt.size) {
+      html += `
+        <div class="section-title">사이즈</div>
+        <div class="option-row">
           <button class="option-btn ${
-            order.toppings.includes(t.key) ? "active" : ""
-          }" data-role="topping" data-key="${t.key}">
-            ${t.label}
-          </button>
-        `
-          )
-          .join("")}
-      </div>
+            order.size === "regular" ? "active" : ""
+          }" data-role="size" data-key="regular">레귤러</button>
+          <button class="option-btn ${
+            order.size === "large" ? "active" : ""
+          }" data-role="size" data-key="large">점보(+500원)</button>
+        </div>
+      `;
+    }
 
-      <div class="section-title">온도</div>
-      <div class="option-row">
-        <button class="option-btn ${
-          order.temp === "ice" ? "active" : ""
-        }" data-role="temp" data-key="ice">아이스 ICE</button>
-        <button class="option-btn ${
-          order.temp === "hot" ? "active" : ""
-        }" data-role="temp" data-key="hot">핫 HOT</button>
-      </div>
-
-      <div class="section-title">사이즈</div>
-      <div class="option-row">
-        <button class="option-btn ${
-          order.size === "regular" ? "active" : ""
-        }" data-role="size" data-key="regular">레귤러</button>
-        <button class="option-btn ${
-          order.size === "large" ? "active" : ""
-        }" data-role="size" data-key="large">점보(+500원)</button>
-      </div>
-
+    html += `
       <button class="primary-btn" data-role="add-cart">장바구니에 담기</button>
       <button class="secondary-btn" data-role="back-menu">← 메뉴 다시 선택</button>
 
       <div class="toast info show">
-        💡 미션: '아이스 ICE'로 선택하면 미션 조건에 맞게 됩니다.
+        💡 현재 난이도에서 요구하는 옵션만 정확히 선택하면 미션 조건을 만족할 수 있습니다.
       </div>
     `;
   } else if (currentStep === STEPS.CART) {
     const sizeExtra = order.size === "large" ? 500 : 0;
     const totalPrice = (order.price + sizeExtra) * order.quantity;
+    const cfg = LEVEL_CONFIG[currentLevel];
+    const opt = cfg?.options || {};
 
     const toppingsLabel =
       order.toppings.length > 0
         ? order.toppings.map(getToppingLabel).join(", ")
         : "토핑 없음";
+
+    let descLines = [];
+
+    if (opt.temp) descLines.push(order.temp === "ice" ? "아이스" : "핫");
+    if (opt.sugar) descLines.push(`당도 ${getSugarLabel(order.sugar)}`);
+    if (opt.ice) descLines.push(`얼음 ${getIceLabel(order.iceLevel)}`);
+    if (opt.size)
+      descLines.push(order.size === "regular" ? "레귤러" : "점보");
+    if (opt.toppings) descLines.push(`토핑: ${toppingsLabel}`);
 
     html += `
       <div class="screen-title">4단계 · 장바구니 확인</div>
@@ -285,15 +455,7 @@ function render() {
       <div class="card">
         <div class="card-title">${order.drinkName}</div>
         <div class="card-desc">
-          당도 ${getSugarLabel(order.sugar)}, 얼음 ${getIceLabel(
-      order.iceLevel
-    )}<br/>
-          ${
-            order.temp === "ice" ? "아이스" : "핫"
-          } · ${order.size === "regular" ? "레귤러" : "점보"} · x${
-      order.quantity
-    }<br/>
-          토핑: ${toppingsLabel}
+          ${descLines.join(" · ")} · x${order.quantity}
         </div>
         <div class="card-price">합계: ${formatPrice(totalPrice)}</div>
       </div>
@@ -308,6 +470,23 @@ function render() {
   } else if (currentStep === STEPS.PAYMENT) {
     const sizeExtra = order.size === "large" ? 500 : 0;
     const totalPrice = (order.price + sizeExtra) * order.quantity;
+    const cfg = LEVEL_CONFIG[currentLevel];
+    const opt = cfg?.options || {};
+
+    const toppingsLabel =
+      order.toppings.length > 0
+        ? order.toppings.map(getToppingLabel).join(", ")
+        : "토핑 없음";
+
+    let descLines = [];
+
+    if (opt.temp) descLines.push(order.temp === "ice" ? "아이스" : "핫");
+    if (opt.sugar) descLines.push(`당도 ${getSugarLabel(order.sugar)}`);
+    if (opt.ice) descLines.push(`얼음 ${getIceLabel(order.iceLevel)}`);
+    if (opt.size)
+      descLines.push(order.size === "regular" ? "레귤러" : "점보");
+    if (opt.toppings) descLines.push(`토핑: ${toppingsLabel}`);
+    descLines.push(`x${order.quantity}`);
 
     html += `
       <div class="screen-title">5단계 · 결제</div>
@@ -317,19 +496,7 @@ function render() {
         <div class="card-title">주문 내역</div>
         <div class="card-desc">
           ${order.drinkName}<br/>
-          ${
-            order.temp === "ice" ? "아이스" : "핫"
-          } · ${order.size === "regular" ? "레귤러" : "점보"} · x${
-      order.quantity
-    }<br/>
-          당도 ${getSugarLabel(order.sugar)}, 얼음 ${getIceLabel(
-      order.iceLevel
-    )}<br/>
-          토핑: ${
-            order.toppings.length > 0
-              ? order.toppings.map(getToppingLabel).join(", ")
-              : "없음"
-          }
+          ${descLines.join(" · ")}
         </div>
         <div class="card-price">총 결제금액: ${formatPrice(totalPrice)}</div>
       </div>
@@ -348,32 +515,52 @@ function render() {
       </div>
     `;
   } else if (currentStep === STEPS.DONE) {
-    const isMissionSuccess =
-      order.category === missionTarget.category &&
-      order.drinkKey === missionTarget.drink &&
-      order.temp === missionTarget.temp;
+    const isMissionSuccess = checkMissionSuccess();
 
     html += `
       <div class="center-message">
         ${
           isMissionSuccess
             ? `<div style="font-size:1.2rem; margin-bottom:8px;">🎉 미션 성공!</div>
-               <div>타로 밀크티 아이스를 정확하게 주문했습니다.</div>`
+               <div>선택한 난이도에 맞게 정확하게 주문했습니다.</div>`
             : `<div style="font-size:1.2rem; margin-bottom:8px;">주문 완료</div>
-               <div>주문은 완료되었지만, 미션과는 조금 다른 메뉴일 수 있습니다.</div>`
+               <div>주문은 완료되었지만, 미션과는 조금 다른 옵션일 수 있습니다.</div>`
         }
         <div style="margin-top:16px; font-size:0.85rem; color:#777;">
-          다시 연습하고 싶다면 아래 버튼을 눌러 처음부터 시작해 보세요.
+          다시 연습하고 싶다면 아래 버튼을 눌러 난이도부터 다시 선택해 보세요.
         </div>
       </div>
 
-      <button class="primary-btn" data-role="restart">처음부터 다시 연습하기</button>
+      <button class="primary-btn" data-role="restart">처음으로 돌아가기</button>
     `;
   }
 
   screenEl.innerHTML = html;
   updateBottomBar();
   attachHandlers();
+}
+
+// 미션 성공 여부 체크
+function checkMissionSuccess() {
+  if (!missionTarget) return false;
+
+  const cfg = LEVEL_CONFIG[currentLevel];
+  const opt = cfg?.options || {};
+  const t = missionTarget;
+
+  if (t.category && order.category !== t.category) return false;
+  if (t.drink && order.drinkKey !== t.drink) return false;
+  if (opt.temp && t.temp && order.temp !== t.temp) return false;
+  if (opt.size && t.size && order.size !== t.size) return false;
+  if (opt.sugar && t.sugar && order.sugar !== t.sugar) return false;
+  if (opt.ice && t.iceLevel && order.iceLevel !== t.iceLevel) return false;
+  if (opt.toppings && t.toppings) {
+    // 미션에 지정된 토핑들이 모두 포함되어 있는지
+    for (const top of t.toppings) {
+      if (!order.toppings.includes(top)) return false;
+    }
+  }
+  return true;
 }
 
 // 하단 장바구니 표시 업데이트
@@ -398,7 +585,9 @@ function updateBottomBar() {
     currentStep === STEPS.CART || currentStep === STEPS.PAYMENT
   );
   payBtn.textContent =
-    currentStep === STEPS.PAYMENT ? "결제 완료" : `결제하기 (${formatPrice(totalPrice)})`;
+    currentStep === STEPS.PAYMENT
+      ? "결제 완료"
+      : `결제하기 (${formatPrice(totalPrice)})`;
 }
 
 // 클릭 핸들러 부착
@@ -425,7 +614,12 @@ function handleAction(el) {
   const role = el.dataset.role;
   const key = el.dataset.key;
 
-  if (role === "category" && currentStep === STEPS.CATEGORY) {
+  if (role === "level" && currentStep === STEPS.HOME) {
+    setLevel(key);
+  } else if (role === "back-home") {
+    currentStep = STEPS.HOME;
+    render();
+  } else if (role === "category" && currentStep === STEPS.CATEGORY) {
     order.category = key;
     currentStep = STEPS.MENU;
     render();
@@ -489,18 +683,14 @@ function handleAction(el) {
     currentStep = STEPS.DONE;
     render();
   } else if (role === "restart") {
-    // 초기화
-    order.category = null;
-    order.drinkKey = null;
-    order.drinkName = null;
-    order.price = 0;
-    order.temp = "ice";
-    order.size = "regular";
-    order.sugar = "50";
-    order.iceLevel = "regular";
-    order.toppings = [];
-    order.quantity = 1;
-    currentStep = STEPS.CATEGORY;
+    currentLevel = null;
+    missionTarget = null;
+    order.level = null;
+    currentStep = STEPS.HOME;
+    // 헤더 초기 문구로 되돌리기
+    missionTextEl.textContent = "먼저 난이도를 선택해 연습을 시작해 보세요.";
+    missionSubEl.textContent =
+      "초급: 메뉴 + ICE/HOT · 중급: +사이즈 · 고급: 당도·얼음·토핑까지 연습합니다.";
     render();
   }
 }
