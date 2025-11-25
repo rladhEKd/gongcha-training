@@ -195,6 +195,7 @@ header {
   display: flex;
   gap: 8px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .option-btn {
