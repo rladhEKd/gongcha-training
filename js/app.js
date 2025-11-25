@@ -595,7 +595,7 @@ function attachHandlers() {
   screenEl
     .querySelectorAll("[data-role]")
     .forEach((el) =>
-      el.addEventListener("click", (e) => handleAction(e.target))
+      el.addEventListener("click", () => handleAction(el))
     );
 
   payBtn.onclick = () => {
